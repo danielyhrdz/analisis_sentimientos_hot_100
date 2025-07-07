@@ -16,37 +16,64 @@ conn <- DBI::dbConnect(
 ## Utilizado para paralelizar 
 filas <- eval(parse(text = Sys.getenv("FILAS_LEER")))
 
-historico <- tbl(conn, "historico_hot_100") |> 
-  collect() |> 
-  mutate(llave = paste(cancion, artista, sep = "_"))
-
 # Asegurar que no se buscan urls que ya fueron obtenidas en otra corrida -------
 
 ## Lectura de los resultados actuales
 
-urls_obtenidos <- tbl(conn, "genius_urls") |> 
-  select(cancion, artista) |> 
+urls_ya <- tbl(conn, "genius_urls") |> 
+  filter(!is.na(url)) |> 
+  distinct(url, cancion, artista, .keep_all = TRUE) |> 
   collect() |> 
-  mutate(llave = paste(cancion, artista, sep = "_"))
+  mutate(artista = tolower(artista),
+           artista = str_replace_all(artista, "[[:punct:]]", " "),
+           artista = str_replace_all(artista, " ", ""),
+           cancion = tolower(cancion),
+           cancion = str_replace_all(cancion, "[[:punct:]]", " "),
+           cancion = str_replace_all(cancion, " ", ""),
+           llave = paste(cancion, artista, sep = "_"))
+
+urls_na <- tbl(conn, "genius_urls") |> 
+  filter(is.na(url)) |> 
+  distinct(url, cancion, artista, .keep_all = TRUE) |> 
+  collect() |> 
+  mutate(artista = tolower(artista),
+           artista = str_replace_all(artista, "[[:punct:]]", " "),
+           artista = str_replace_all(artista, " ", ""),
+           cancion = tolower(cancion),
+           cancion = str_replace_all(cancion, "[[:punct:]]", " "),
+           cancion = str_replace_all(cancion, " ", ""),
+           llave = paste(cancion, artista, sep = "_"))
 
 letras_obtenidas <- tbl(conn, "letras_canciones_hot_100") |> 
-  select(cancion, artista) |> 
-  collect() |> 
-  mutate(llave = paste(cancion, artista, sep = "_"))
+    distinct(letra, .keep_all = TRUE) |> 
+    select(cancion, artista) |>
+    collect() |> 
+    mutate(artista = tolower(artista),
+           artista = str_replace_all(artista, "[[:punct:]]", " "),
+           artista = str_replace_all(artista, " ", ""),
+           cancion = tolower(cancion),
+           cancion = str_replace_all(cancion, "[[:punct:]]", " "),
+           cancion = str_replace_all(cancion, " ", ""),
+           llave = paste(cancion, artista, sep = "_")) 
 
-## Crear operador notin
-`%notin%` <- Negate(`%in%`)
-
-## Filtrar letras obtenids
-canciones_a_buscar <- historico |>
-  filter(llave %notin% letras_obtenidas$llave) |> 
+historico <- tbl(conn, "hot_100_historico_unico") |> 
+  collect() |>  
+  mutate(performer_clean = tolower(performer),
+           performer_clean = str_replace_all(performer_clean, "[[:punct:]]", " "),
+           performer_clean = str_replace_all(performer_clean, " ", ""),
+           song_clean = tolower(song),
+           song_clean = str_replace_all(song_clean, "[[:punct:]]", " "),
+           song_clean = str_replace_all(song_clean, " ", ""),
+           llave = paste(song_clean, performer_clean, sep = "_")) |> 
+  filter(llave %notin% urls_ya$llave,
+         llave %notin% letras_obtenidas$llave) |> 
   slice(filas)
 
 ## Definir canciones a las que buscar el url
-canciones <- canciones_a_buscar |> 
+canciones <- historico |> 
   pull(cancion)
 
-artistas <- canciones_a_buscar |> 
+artistas <- historico |> 
   pull(artista)
 
 # Buscar urls ------------------------------------------------------------------

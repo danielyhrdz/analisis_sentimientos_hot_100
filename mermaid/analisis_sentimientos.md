@@ -1,0 +1,20 @@
+graph TD
+    A[Inicio] --> B[Cargar librerías para análisis de sentimientos y ML];
+    B --> C[Conectar a BigQuery];
+    C --> D[Leer tabla letras_canciones_hot_100 de BigQuery con letras crudas];
+    D --> E[Limpiar y tokenizar letras y eliminar stopwords];
+    E --> F[Cargar léxicos de sentimiento: AFINN, Bing, NRC, Loughran-McDonald];
+    F --> G[Traducir léxicos a español usando Google Translate API];
+    G --> H[Escribir léxicos traducidos a tablas en BigQuery];
+    H --> I[Leer léxicos desde BigQuery];
+    I --> J[Categorizar y estandarizar datos de léxicos para comparación];
+    J --> K[Unificar resultados de léxicos en un solo Dataframe];
+    K --> L[Contar y visualizar proporciones de sentimientos por léxico];
+    L --> M[Preparar datasets etiquetados para ML];
+    M --> N[Dividir datasets en conjuntos de entrenamiento y prueba: 70/30 estratificado];
+    N --> O[Definir recetas de preprocesamiento de texto: tokenizar, stopwords, stem, TF-IDF, filtrar tokens];
+    O --> P[Especificar modelos de Machine Learning: Naive Bayes, SVM Lineal];
+    P --> Q[Entrenar modelos ML en paralelo y por lotes];
+    Q --> R[Recolectar métricas de rendimiento: exactitud, precision, sensibilidad, F1-Score];
+    R --> S[Comparar modelos y mostrar matrices de confusión];
+    S --> T[Fin];

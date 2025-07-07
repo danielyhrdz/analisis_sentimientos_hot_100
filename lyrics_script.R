@@ -12,7 +12,7 @@ library(DBI)
 # Conexión a BigQuery ----------------------------------------------------------
 bq_project_id <- "tesis-2025-457202" 
 bq_dataset_id <- "sentiment_analysis_db"
-bq_table_id   <- "letras_canciones_hot_100"
+bq_table_id   <- "letras_canciones_hot_100_new"
 
 bigrquery::bq_auth(path = "./sa_tesis.json")
 
@@ -28,19 +28,44 @@ conn <- DBI::dbConnect(
 `%notin%` <- Negate(`%in%`)
 
 ## Leer direcciones web a las que consultar
-urls <- tbl(conn, "genius_urls") |> 
-  filter(!is.na(url)) |> 
+urls <- tbl(conn, "genius_urls_new") |>  
   collect() 
 
-## Filtrar letras que ya se obtuvieron
-letras_obtenidas <- tbl(conn, "letras_canciones_hot_100") |> 
-  select(cancion, artista) |>
-  collect() |> 
-  mutate(llave = paste(cancion, artista, sep = "_")) 
-
-urls_a_buscar <- urls |>
-  mutate(llave = paste(cancion, artista, sep = "_")) |> 
-  filter(llave %notin% letras_obtenidas$llave)
+if (DBI::dbExistsTable(conn, "letras_canciones_hot_100_new")) {
+  
+  # If the table exists, filter out the URLs we already have
+  message("Table 'letras_canciones_hot_100_new' found. Filtering out existing songs.")
+  
+  letras_obtenidas <- tbl(conn, "letras_canciones_hot_100_new") |> 
+    distinct(letra, .keep_all = TRUE) |> 
+    select(cancion, artista) |>
+    collect() |> 
+    mutate(artista = tolower(artista),
+           artista = str_replace_all(artista, "[[:punct:]]", " "),
+           artista = str_replace_all(artista, " ", ""),
+           cancion = tolower(cancion),
+           cancion = str_replace_all(cancion, "[[:punct:]]", " "),
+           cancion = str_replace_all(cancion, " ", ""),
+           llave = paste(cancion, artista, sep = "_")) 
+  
+  urls_a_buscar <- urls |>
+     mutate(artista = tolower(artista),
+            artista = str_replace_all(artista, "[[:punct:]]", " "),
+            artista = str_replace_all(artista, " ", ""),
+            cancion = tolower(cancion),
+            cancion = str_replace_all(cancion, "[[:punct:]]", " "),
+            cancion = str_replace_all(cancion, " ", ""),
+            llave = paste(cancion, artista, sep = "_")) |> 
+      filter(llave %notin% letras_obtenidas$llave, !is.na(url))
+  
+} else {
+  
+  message("Table 'letras_canciones_hot_100_new' not found. Processing all URLs.")
+  
+  urls_a_buscar <- urls |>
+    mutate(llave = paste(cancion, artista, sep = "_"))
+    
+}
 
 # Raspado web por lotes y escritura a BigQuery ---------------------------------
 
@@ -72,22 +97,20 @@ for (i in 1:total_batches) {
   # Procesar el lote actual para obtener las letras de las canciones
   processed_batch <- tryCatch({
     current_batch %>%
-      mutate(letra = purrr::map_chr(url, raspar_letras_safe))
+      mutate(letra = purrr::map_chr(url, raspar_letras_safe)) |> 
+      select(-llave)
   }, error = function(e) {
     # Manejo de errores
     cat(paste0("  ERROR en lote ", i, ": ", e$message, "\n"))
-    current_batch %>% mutate(letra = "no lyric")
+    current_batch %>% mutate(letra = "no lyric")|> 
+      select(-llave)
   })
-
-  processed_batch_upload <- processed_batch |> 
-    select(-c(url, llave)) |> 
-    mutate(posicion = NA, fecha = NA)
   
   # Escribir el lote procesado en BigQuery
   tryCatch({
     bq_table_upload(
       x = table_ref,
-      values = processed_batch_upload,
+      values = processed_batch,
       write_disposition = "WRITE_APPEND"
     )
     

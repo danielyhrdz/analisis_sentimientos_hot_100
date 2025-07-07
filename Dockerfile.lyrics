@@ -30,3 +30,4 @@ EXPOSE 8080
 # Establecer el entrypoint y el comando por defecto para ejecutar el script
 ENTRYPOINT ["Rscript"]
 CMD ["lyrics_script.R"]
+
